@@ -52,18 +52,8 @@
     const input = document.getElementById("input");
     const sticky = document.getElementById("sticky-bar");
 
-    const jobList = {
-      tech: 3,
-      ceo: 5,
-      cook: 2
-    };
-
-    const itemList = {
-      pager: 10,
-      dvd: 5,
-      tape: 3,
-      cd: 4
-    };
+    const jobList = { tech: 3, ceo: 5, cook: 2 };
+    const itemList = { pager: 10, dvd: 5, tape: 3, cd: 4 };
 
     const updateSticky = () => {
       if (!currentPlayer) {
@@ -91,20 +81,15 @@
           await savePlayer();
           print(`💰 Salary paid: ${jobList[currentPlayer.job]}`);
         }
-      }, 600000); // 10 minutes
+      }, 600000);
     };
 
     const signup = async (pw) => {
       if (pw.length < 6) return print("❌ Password must be 6+ chars.");
       const tag = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       const player = {
-        tag,
-        password: pw,
-        cash: 0,
-        job: "",
-        income: 0,
-        items: {},
-        lastClaimTime: Date.now()
+        tag, password: pw, cash: 0, job: "", income: 0,
+        items: {}, lastClaimTime: Date.now()
       };
       await db.players.add(player);
       currentPlayer = player;
@@ -135,22 +120,22 @@ sell <item> <qty>
 inv
 dice <bet>
 slots <bet>
+crime <level>        - Attempt crime (level 1–3)
 savefile
 loadfile
 reset
 help`);
     };
 
-    const joblist = () => {
-      Object.entries(jobList).forEach(([job, wage]) => print(`${job} : ${wage}`));
-    };
+    const joblist = () => Object.entries(jobList).forEach(([j, w]) => print(`${j} : ${w}`));
+    const itemlist = () => Object.entries(itemList).forEach(([i, p]) => print(`${i} : ${p}`));
 
-    const apply = async (jobname) => {
-      if (!jobList[jobname]) return print("❌ Job not found.");
-      currentPlayer.job = jobname;
-      currentPlayer.income = jobList[jobname];
+    const apply = async (j) => {
+      if (!jobList[j]) return print("❌ Job not found.");
+      currentPlayer.job = j;
+      currentPlayer.income = jobList[j];
       await savePlayer();
-      print(`✅ Hired as ${jobname}`);
+      print(`✅ Hired as ${j}`);
     };
 
     const resign = async () => {
@@ -158,10 +143,6 @@ help`);
       currentPlayer.income = 0;
       await savePlayer();
       print("❌ You resigned.");
-    };
-
-    const itemlist = () => {
-      Object.entries(itemList).forEach(([item, price]) => print(`${item} : ${price}`));
     };
 
     const buy = async (item, qty) => {
@@ -207,6 +188,32 @@ help`);
       currentPlayer.cash += win ? bet : -bet;
       await savePlayer();
       print(win ? `🎰 You won ${bet}` : `🎰 You lost ${bet}`);
+    };
+
+    const crimeCommand = async (levelStr) => {
+      if (!currentPlayer) return print("❌ Login first.");
+      const level = parseInt(levelStr);
+      if (![1, 2, 3].includes(level)) return print("❌ Crime level must be 1, 2 or 3.");
+
+      let successRate, rewardRange, fineRange;
+      switch (level) {
+        case 1: successRate = 0.7; rewardRange = [10, 30]; fineRange = [5, 15]; break;
+        case 2: successRate = 0.5; rewardRange = [30, 60]; fineRange = [15, 30]; break;
+        case 3: successRate = 0.3; rewardRange = [60, 100]; fineRange = [30, 60]; break;
+      }
+
+      const success = Math.random() < successRate;
+      if (success) {
+        const reward = Math.floor(Math.random() * (rewardRange[1] - rewardRange[0] + 1)) + rewardRange[0];
+        currentPlayer.cash += reward;
+        print(`🦹‍♂️ Crime success! Gained $${reward}`);
+      } else {
+        const fine = Math.floor(Math.random() * (fineRange[1] - fineRange[0] + 1)) + fineRange[0];
+        currentPlayer.cash -= fine;
+        print(`🚔 Crime failed! Fined $${fine}`);
+      }
+
+      await savePlayer();
     };
 
     const saveFile = () => {
@@ -262,6 +269,7 @@ help`);
         case 'inv': return inv();
         case 'dice': return dice(args[0]);
         case 'slots': return slots(args[0]);
+        case 'crime': return crimeCommand(args[0]);
         case 'savefile': return saveFile();
         case 'loadfile': return loadFile();
         case 'reset': return reset();
@@ -278,7 +286,6 @@ help`);
       }
     });
 
-    // Auto-login on refresh
     (async () => {
       const tag = localStorage.getItem("currentTag");
       if (tag) {
