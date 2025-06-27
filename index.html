@@ -108,24 +108,39 @@
     };
 
     const help = () => {
-      print(`📜 Commands:
-signup <password>
-login <tag> <password>
-joblist
-apply <jobname>
-resign
-itemlist
-buy <item> <qty>
-sell <item> <qty>
-inv
-dice <bet>
-slots <bet>
-crime <level>        - Attempt crime (level 1–3)
-savefile
-loadfile
-reset
-help`);
-    };
+  print(`📌 AKAUN
+signup <password>            - Daftar pemain baru (password min. 6 aksara)
+login <tag> <password>       - Login pemain sedia ada
+reset                        - Padam akaun semasa
+
+🧑 PROFIL
+| tag : <id> | cash : <x> | age : <hari> | job : <nama> | income : <gaji> |
+
+💼 KERJA
+joblist                     - Lihat senarai kerja & gaji
+apply <jobname>             - Mohon kerja
+resign                      - Berhenti kerja semasa
+
+🛒 BARANG
+itemlist                    - Lihat senarai item & harga
+buy <item> <qty>            - Beli item
+sell <item> <qty>           - Jual item (50% refund)
+inv                         - Lihat item dimiliki
+
+🎲 MINI GAME
+dice <bet>                 - Bertaruh dadu (50% win, min 5)
+slots <bet>                - Mesin slot (60% win, min 5)
+
+🦹 CRIME
+crime <level>              - Cuba jenayah (level 1-3, risiko/ganjaran ikut level)
+
+💾 SIMPAN / MUAT NAIK
+savefile                   - Simpan fail game ke telefon
+loadfile                   - Muat naik fail `.json`
+
+🔧 SISTEM
+help                       - Senarai arahan`);
+};
 
     const joblist = () => Object.entries(jobList).forEach(([j, w]) => print(`${j} : ${w}`));
     const itemlist = () => Object.entries(itemList).forEach(([i, p]) => print(`${i} : ${p}`));
