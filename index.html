@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>zxvwp 15.0</title>
+  <style>
+    body {
+      background-color: black;
+      color: green;
+      font-family: monospace;
+      margin: 0;
+      padding: 0;
+    }
+    #output {
+      padding: 10px;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      height: 90vh;
+    }
+    #input {
+      width: 100%;
+      padding: 10px;
+      background-color: black;
+      color: green;
+      border: none;
+      font-family: monospace;
+      font-size: 16px;
+    }
+    #sticky-bar {
+      background: black;
+      color: green;
+      padding: 5px 10px;
+      position: sticky;
+      top: 0;
+      font-weight: bold;
+      border-bottom: 1px solid green;
+    }
+  </style>
+</head>
+<body>
+  <div id="sticky-bar">| tag : --- | cash : 0 | age : 0 | job : 0 | income : 0 |</div>
+  <div id="output"></div>
+  <input id="input" type="text" autocomplete="off" autofocus placeholder="Type a command..." />
+
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+  <script>
+    const db = new Dexie("CLIGame");
+    db.version(1).stores({ players: 'tag' });
+
+    let currentPlayer = null;
+    const output = document.getElementById("output");
+    const input = document.getElementById("input");
+    const sticky = document.getElementById("sticky-bar");
+
+    const jobList = {
+      tech: 3,
+      ceo: 5,
+      cook: 2
+    };
+
+    const itemList = {
+      pager: 10,
+      dvd: 5,
+      tape: 3,
+      cd: 4
+    };
+
+    const updateSticky = () => {
+      if (!currentPlayer) {
+        sticky.textContent = `| tag : --- | cash : 0 | age : 0 | job : 0 | income : 0 |`;
+        return;
+      }
+      const age = Math.floor((Date.now() - currentPlayer.lastClaimTime) / 86400000);
+      sticky.textContent = `| tag : ${currentPlayer.tag} | cash : ${currentPlayer.cash} | age : ${age} | job : ${currentPlayer.job || 0} | income : ${currentPlayer.income || 0} |`;
+    };
+
+    const print = (text) => {
+      output.textContent += text + "\n";
+      output.scrollTop = output.scrollHeight;
+    };
+
+    const savePlayer = async () => {
+      if (currentPlayer) await db.players.put(currentPlayer);
+      updateSticky();
+    };
+
+    const autoSalary = () => {
+      setInterval(async () => {
+        if (currentPlayer && currentPlayer.job) {
+          currentPlayer.cash += jobList[currentPlayer.job] || 0;
+          await savePlayer();
+          print(`💰 Salary paid: ${jobList[currentPlayer.job]}`);
+        }
+      }, 600000); // 10 minutes
+    };
+
+    const signup = async (pw) => {
+      if (pw.length < 6) return print("❌ Password must be 6+ chars.");
+      const tag = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const player = {
+        tag,
+        password: pw,
+        cash: 0,
+        job: "",
+        income: 0,
+        items: {},
+        lastClaimTime: Date.now()
+      };
+      await db.players.add(player);
+      currentPlayer = player;
+      await savePlayer();
+      localStorage.setItem("currentTag", tag);
+      print(`✅ Signup successful. Your tag is ${tag}`);
+    };
+
+    const login = async (tag, pw) => {
+      const player = await db.players.get(tag);
+      if (!player || player.password !== pw) return print("❌ Invalid credentials.");
+      currentPlayer = player;
+      await savePlayer();
+      localStorage.setItem("currentTag", tag);
+      print(`✅ Welcome back, ${tag}`);
+    };
+
+    const help = () => {
+      print(`📜 Commands:
+signup <password>
+login <tag> <password>
+joblist
+apply <jobname>
+resign
+itemlist
+buy <item> <qty>
+sell <item> <qty>
+inv
+dice <bet>
+slots <bet>
+savefile
+loadfile
+reset
+help`);
+    };
+
+    const joblist = () => {
+      Object.entries(jobList).forEach(([job, wage]) => print(`${job} : ${wage}`));
+    };
+
+    const apply = async (jobname) => {
+      if (!jobList[jobname]) return print("❌ Job not found.");
+      currentPlayer.job = jobname;
+      currentPlayer.income = jobList[jobname];
+      await savePlayer();
+      print(`✅ Hired as ${jobname}`);
+    };
+
+    const resign = async () => {
+      currentPlayer.job = "";
+      currentPlayer.income = 0;
+      await savePlayer();
+      print("❌ You resigned.");
+    };
+
+    const itemlist = () => {
+      Object.entries(itemList).forEach(([item, price]) => print(`${item} : ${price}`));
+    };
+
+    const buy = async (item, qty) => {
+      if (!itemList[item]) return print("❌ Item not found.");
+      qty = parseInt(qty);
+      const cost = itemList[item] * qty;
+      currentPlayer.cash -= cost;
+      currentPlayer.items[item] = (currentPlayer.items[item] || 0) + qty;
+      await savePlayer();
+      print(`✅ Bought ${qty} ${item}(s)`);
+    };
+
+    const sell = async (item, qty) => {
+      qty = parseInt(qty);
+      if (!currentPlayer.items[item] || currentPlayer.items[item] < qty)
+        return print("❌ Not enough items.");
+      const refund = Math.floor((itemList[item] * qty) * 0.5);
+      currentPlayer.cash += refund;
+      currentPlayer.items[item] -= qty;
+      await savePlayer();
+      print(`💵 Sold ${qty} ${item}(s) for ${refund}`);
+    };
+
+    const inv = () => {
+      if (!currentPlayer) return print("❌ Login first.");
+      print(`📦 Inventory:`);
+      Object.entries(currentPlayer.items).forEach(([item, qty]) => print(`${item}: ${qty}`));
+    };
+
+    const dice = async (bet) => {
+      bet = parseInt(bet);
+      if (bet < 5) return print("❌ Min bet 5");
+      const win = Math.random() < 0.5;
+      currentPlayer.cash += win ? bet : -bet;
+      await savePlayer();
+      print(win ? `🎲 You won ${bet}` : `🎲 You lost ${bet}`);
+    };
+
+    const slots = async (bet) => {
+      bet = parseInt(bet);
+      if (bet < 5) return print("❌ Min bet 5");
+      const win = Math.random() < 0.6;
+      currentPlayer.cash += win ? bet : -bet;
+      await savePlayer();
+      print(win ? `🎰 You won ${bet}` : `🎰 You lost ${bet}`);
+    };
+
+    const saveFile = () => {
+      if (!currentPlayer) return print("❌ Login first.");
+      const blob = new Blob([JSON.stringify(currentPlayer)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `save_${currentPlayer.tag}.json`;
+      a.click();
+    };
+
+    const loadFile = () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json";
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const data = JSON.parse(event.target.result);
+          await db.players.put(data);
+          currentPlayer = data;
+          localStorage.setItem("currentTag", data.tag);
+          updateSticky();
+          print(`✅ Game loaded for tag ${data.tag}`);
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    };
+
+    const reset = async () => {
+      if (!currentPlayer) return print("❌ Login first.");
+      if (!confirm("⚠️ This will DELETE your save. Proceed?")) return print("❌ Cancelled.");
+      await db.players.delete(currentPlayer.tag);
+      localStorage.removeItem("currentTag");
+      currentPlayer = null;
+      updateSticky();
+      print("🗑️ Account deleted.");
+    };
+
+    const parse = async (text) => {
+      const [cmd, ...args] = text.trim().split(" ");
+      switch (cmd) {
+        case 'signup': return signup(args[0]);
+        case 'login': return login(args[0], args[1]);
+        case 'joblist': return joblist();
+        case 'apply': return apply(args[0]);
+        case 'resign': return resign();
+        case 'itemlist': return itemlist();
+        case 'buy': return buy(args[0], args[1]);
+        case 'sell': return sell(args[0], args[1]);
+        case 'inv': return inv();
+        case 'dice': return dice(args[0]);
+        case 'slots': return slots(args[0]);
+        case 'savefile': return saveFile();
+        case 'loadfile': return loadFile();
+        case 'reset': return reset();
+        case 'help': return help();
+        default: print("❓ Unknown command. Type 'help'");
+      }
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        print("> " + input.value);
+        parse(input.value);
+        input.value = "";
+      }
+    });
+
+    // Auto-login on refresh
+    (async () => {
+      const tag = localStorage.getItem("currentTag");
+      if (tag) {
+        const p = await db.players.get(tag);
+        if (p) {
+          currentPlayer = p;
+          updateSticky();
+          print(`✅ Auto-login as ${tag}`);
+        }
+      }
+      autoSalary();
+    })();
+  </script>
+</body>
+</html>
