@@ -2,113 +2,237 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>zxvwp 15.0</title>
+  <title>CLI Game</title>
+  <script src="https://unpkg.com/dexie@3.2.2/dist/dexie.min.js"></script>
   <style>
     body {
       background-color: black;
-      color: green;
+      color: lime;
       font-family: monospace;
-      margin: 0;
-      padding: 0;
+      padding: 10px;
     }
     #output {
-      padding: 10px;
       white-space: pre-wrap;
-      overflow-y: auto;
-      height: 90vh;
+      min-height: 80vh;
     }
     #input {
       width: 100%;
-      padding: 10px;
-      background-color: black;
-      color: green;
+      background: black;
+      color: lime;
       border: none;
       font-family: monospace;
       font-size: 16px;
     }
-    #sticky-bar {
-      background: black;
-      color: green;
-      padding: 5px 10px;
-      position: sticky;
-      top: 0;
-      font-weight: bold;
-      border-bottom: 1px solid green;
-    }
   </style>
 </head>
 <body>
-  <div id="sticky-bar">| tag : --- | cash : 0 | age : 0 | job : 0 | income : 0 |</div>
+  <div id="profileBar">| tag : --- | cash : 0 | age : 0 | job : none | income : 0 |</div>
   <div id="output"></div>
-  <input id="input" type="text" autocomplete="off" autofocus placeholder="Type a command..." />
+  <input id="input" autocomplete="off" />
 
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
   <script>
-    const db = new Dexie("CLIGame");
-    db.version(1).stores({ players: 'tag' });
+    const db = new Dexie("CLIGameDB");
+    db.version(1).stores({ players: "tag" });
 
-    let currentPlayer = null;
-    const output = document.getElementById("output");
-    const input = document.getElementById("input");
-    const sticky = document.getElementById("sticky-bar");
+    const $ = (id) => document.getElementById(id);
+    const print = (text) => $("output").innerText += text + "\n";
+    const updateProfileBar = () => {
+      if (!player) return;
+      $("profileBar").innerText =
+        `| tag : ${player.tag} | cash : ${player.cash} | age : ${getAge()} | job : ${player.job || 'none'} | income : ${player.wage || 0} |`;
+    };
 
-    const jobList = { tech: 3, ceo: 5, cook: 2 };
-    const itemList = { pager: 10, dvd: 5, tape: 3, cd: 4 };
+    let player = null;
+    const jobs = { tech: 3, ceo: 5, cook: 2 };
+    const items = { pager: 10, dvd: 5, tape: 3, cd: 4 };
 
-    const updateSticky = () => {
-      if (!currentPlayer) {
-        sticky.textContent = `| tag : --- | cash : 0 | age : 0 | job : 0 | income : 0 |`;
-        return;
+    const getAge = () => {
+      if (!player) return 0;
+      const days = Math.floor((Date.now() - player.createdAt) / (1000 * 60 * 60 * 24));
+      return days;
+    };
+
+    const saveToStorage = async () => {
+      if (!player) return;
+      await db.players.put(player);
+    };
+
+    const loadFromStorage = async () => {
+      const all = await db.players.toArray();
+      if (all.length) {
+        player = all[0];
+        print(`Auto login as ${player.tag}`);
+        updateProfileBar();
       }
-      const age = Math.floor((Date.now() - currentPlayer.lastClaimTime) / 86400000);
-      sticky.textContent = `| tag : ${currentPlayer.tag} | cash : ${currentPlayer.cash} | age : ${age} | job : ${currentPlayer.job || 0} | income : ${currentPlayer.income || 0} |`;
     };
 
-    const print = (text) => {
-      output.textContent += text + "\n";
-      output.scrollTop = output.scrollHeight;
-    };
-
-    const savePlayer = async () => {
-      if (currentPlayer) await db.players.put(currentPlayer);
-      updateSticky();
-    };
-
-    const autoSalary = () => {
-      setInterval(async () => {
-        if (currentPlayer && currentPlayer.job) {
-          currentPlayer.cash += jobList[currentPlayer.job] || 0;
-          await savePlayer();
-          print(`💰 Salary paid: ${jobList[currentPlayer.job]}`);
+    const autoPay = () => {
+      setInterval(() => {
+        if (player?.job) {
+          player.cash += player.wage;
+          print(`[Salary] +${player.wage} cash`);
+          updateProfileBar();
+          saveToStorage();
         }
-      }, 600000);
+      }, 600000); // 10 minutes
     };
 
-    const signup = async (pw) => {
-      if (pw.length < 6) return print("❌ Password must be 6+ chars.");
-      const tag = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      const player = {
-        tag, password: pw, cash: 0, job: "", income: 0,
-        items: {}, lastClaimTime: Date.now()
-      };
-      await db.players.add(player);
-      currentPlayer = player;
-      await savePlayer();
-      localStorage.setItem("currentTag", tag);
-      print(`✅ Signup successful. Your tag is ${tag}`);
-    };
-
-    const login = async (tag, pw) => {
-      const player = await db.players.get(tag);
-      if (!player || player.password !== pw) return print("❌ Invalid credentials.");
-      currentPlayer = player;
-      await savePlayer();
-      localStorage.setItem("currentTag", tag);
-      print(`✅ Welcome back, ${tag}`);
-    };
-
-    const help = () => {
-  print(`📌 AKAUN
+    const commands = {
+      signup: async (args) => {
+        if (args[0]?.length < 6) return print("Password min 6 aksara");
+        const tag = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+        player = {
+          tag,
+          password: args[0],
+          cash: 0,
+          job: null,
+          wage: 0,
+          inventory: {},
+          createdAt: Date.now(),
+        };
+        await db.players.clear();
+        await db.players.put(player);
+        print(`Signup berjaya! tag anda: ${tag}`);
+        updateProfileBar();
+      },
+      login: async ([tag, password]) => {
+        const found = await db.players.get(tag);
+        if (found && found.password === password) {
+          player = found;
+          print(`Login sebagai ${tag}`);
+          updateProfileBar();
+        } else {
+          print("Login gagal");
+        }
+      },
+      reset: async () => {
+        await db.players.clear();
+        player = null;
+        print("Akaun dipadam");
+        updateProfileBar();
+      },
+      joblist: () => {
+        print("Senarai kerja:");
+        for (const [job, wage] of Object.entries(jobs)) print(`- ${job} : ${wage}`);
+      },
+      apply: ([job]) => {
+        if (!player) return print("Login dulu");
+        if (!jobs[job]) return print("Kerja tidak wujud");
+        player.job = job;
+        player.wage = jobs[job];
+        updateProfileBar();
+        print(`Anda sekarang bekerja sebagai ${job}`);
+        saveToStorage();
+      },
+      resign: () => {
+        if (!player) return;
+        player.job = null;
+        player.wage = 0;
+        print("Anda telah berhenti kerja");
+        updateProfileBar();
+        saveToStorage();
+      },
+      itemlist: () => {
+        print("Senarai item:");
+        for (const [name, price] of Object.entries(items)) print(`- ${name} : ${price}`);
+      },
+      buy: ([item, qty]) => {
+        if (!player) return;
+        qty = parseInt(qty);
+        if (!items[item] || qty <= 0) return print("Item tidak sah");
+        const cost = items[item] * qty;
+        player.cash -= cost;
+        player.inventory[item] = (player.inventory[item] || 0) + qty;
+        print(`Beli ${qty}x ${item} (-${cost} cash)`);
+        updateProfileBar();
+        saveToStorage();
+      },
+      sell: ([item, qty]) => {
+        if (!player) return;
+        qty = parseInt(qty);
+        if (!player.inventory[item] || player.inventory[item] < qty) return print("Item tidak mencukupi");
+        const refund = Math.floor((items[item] * qty) / 2);
+        player.inventory[item] -= qty;
+        player.cash += refund;
+        print(`Jual ${qty}x ${item} (+${refund} cash)`);
+        updateProfileBar();
+        saveToStorage();
+      },
+      inv: () => {
+        if (!player) return;
+        print("Inventory:");
+        for (const [item, qty] of Object.entries(player.inventory)) print(`- ${item} x${qty}`);
+      },
+      dice: ([bet]) => {
+        if (!player) return;
+        bet = parseInt(bet);
+        if (bet < 5) return print("Min bet: 5");
+        const npc = Math.floor(Math.random() * 20);
+        const user = Math.floor(Math.random() * 20);
+        const win = user >= npc;
+        player.cash += win ? bet : -bet;
+        print(`Dice ${user} vs NPC ${npc} → ${win ? 'Menang' : 'Kalah'} (${win ? '+' : '-'}${bet})`);
+        updateProfileBar();
+        saveToStorage();
+      },
+      slots: ([bet]) => {
+        if (!player) return;
+        bet = parseInt(bet);
+        if (bet < 5) return print("Min bet: 5");
+        const symbols = ['🍒', '🔔', '💎'];
+        const roll = [0, 0, 0].map(() => symbols[Math.floor(Math.random() * symbols.length)]);
+        const win = roll[0] === roll[1] && roll[1] === roll[2];
+        print(`[ ${roll.join(' ')} ]`);
+        player.cash += win ? bet : -bet;
+        print(win ? `Menang +${bet}` : `Kalah -${bet}`);
+        updateProfileBar();
+        saveToStorage();
+      },
+      crime: ([level]) => {
+        if (!player) return;
+        const lvl = parseInt(level);
+        if (![1, 2, 3].includes(lvl)) return print("Gunakan level 1-3");
+        const success = Math.random() < (0.6 - lvl * 0.1);
+        const reward = 10 * lvl + Math.floor(Math.random() * 10);
+        const fine = 10 * lvl + Math.floor(Math.random() * 20);
+        if (success) {
+          player.cash += reward;
+          print(`Crime berjaya! +${reward} cash`);
+        } else {
+          player.cash -= fine;
+          print(`Crime gagal! Denda -${fine} cash`);
+        }
+        updateProfileBar();
+        saveToStorage();
+      },
+      savefile: () => {
+        if (!player) return;
+        const blob = new Blob([JSON.stringify(player)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `cli_game_${player.tag}.json`;
+        a.click();
+      },
+      loadfile: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = async () => {
+            player = JSON.parse(reader.result);
+            await db.players.clear();
+            await db.players.put(player);
+            print(`Fail dimuatkan sebagai ${player.tag}`);
+            updateProfileBar();
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      },
+      help: () => {
+        print(`📌 AKAUN
 signup <password>            - Daftar pemain baru (password min. 6 aksara)
 login <tag> <password>       - Login pemain sedia ada
 reset                        - Padam akaun semasa
@@ -136,183 +260,28 @@ crime <level>              - Cuba jenayah (level 1-3, risiko/ganjaran ikut level
 
 💾 SIMPAN / MUAT NAIK
 savefile                   - Simpan fail game ke telefon
-loadfile                   - Muat naik fail `.json`
+loadfile                   - Muat naik fail .json
 
 🔧 SISTEM
 help                       - Senarai arahan`);
-};
-
-    const joblist = () => Object.entries(jobList).forEach(([j, w]) => print(`${j} : ${w}`));
-    const itemlist = () => Object.entries(itemList).forEach(([i, p]) => print(`${i} : ${p}`));
-
-    const apply = async (j) => {
-      if (!jobList[j]) return print("❌ Job not found.");
-      currentPlayer.job = j;
-      currentPlayer.income = jobList[j];
-      await savePlayer();
-      print(`✅ Hired as ${j}`);
-    };
-
-    const resign = async () => {
-      currentPlayer.job = "";
-      currentPlayer.income = 0;
-      await savePlayer();
-      print("❌ You resigned.");
-    };
-
-    const buy = async (item, qty) => {
-      if (!itemList[item]) return print("❌ Item not found.");
-      qty = parseInt(qty);
-      const cost = itemList[item] * qty;
-      currentPlayer.cash -= cost;
-      currentPlayer.items[item] = (currentPlayer.items[item] || 0) + qty;
-      await savePlayer();
-      print(`✅ Bought ${qty} ${item}(s)`);
-    };
-
-    const sell = async (item, qty) => {
-      qty = parseInt(qty);
-      if (!currentPlayer.items[item] || currentPlayer.items[item] < qty)
-        return print("❌ Not enough items.");
-      const refund = Math.floor((itemList[item] * qty) * 0.5);
-      currentPlayer.cash += refund;
-      currentPlayer.items[item] -= qty;
-      await savePlayer();
-      print(`💵 Sold ${qty} ${item}(s) for ${refund}`);
-    };
-
-    const inv = () => {
-      if (!currentPlayer) return print("❌ Login first.");
-      print(`📦 Inventory:`);
-      Object.entries(currentPlayer.items).forEach(([item, qty]) => print(`${item}: ${qty}`));
-    };
-
-    const dice = async (bet) => {
-      bet = parseInt(bet);
-      if (bet < 5) return print("❌ Min bet 5");
-      const win = Math.random() < 0.5;
-      currentPlayer.cash += win ? bet : -bet;
-      await savePlayer();
-      print(win ? `🎲 You won ${bet}` : `🎲 You lost ${bet}`);
-    };
-
-    const slots = async (bet) => {
-      bet = parseInt(bet);
-      if (bet < 5) return print("❌ Min bet 5");
-      const win = Math.random() < 0.6;
-      currentPlayer.cash += win ? bet : -bet;
-      await savePlayer();
-      print(win ? `🎰 You won ${bet}` : `🎰 You lost ${bet}`);
-    };
-
-    const crimeCommand = async (levelStr) => {
-      if (!currentPlayer) return print("❌ Login first.");
-      const level = parseInt(levelStr);
-      if (![1, 2, 3].includes(level)) return print("❌ Crime level must be 1, 2 or 3.");
-
-      let successRate, rewardRange, fineRange;
-      switch (level) {
-        case 1: successRate = 0.7; rewardRange = [10, 30]; fineRange = [5, 15]; break;
-        case 2: successRate = 0.5; rewardRange = [30, 60]; fineRange = [15, 30]; break;
-        case 3: successRate = 0.3; rewardRange = [60, 100]; fineRange = [30, 60]; break;
-      }
-
-      const success = Math.random() < successRate;
-      if (success) {
-        const reward = Math.floor(Math.random() * (rewardRange[1] - rewardRange[0] + 1)) + rewardRange[0];
-        currentPlayer.cash += reward;
-        print(`🦹‍♂️ Crime success! Gained $${reward}`);
-      } else {
-        const fine = Math.floor(Math.random() * (fineRange[1] - fineRange[0] + 1)) + fineRange[0];
-        currentPlayer.cash -= fine;
-        print(`🚔 Crime failed! Fined $${fine}`);
-      }
-
-      await savePlayer();
-    };
-
-    const saveFile = () => {
-      if (!currentPlayer) return print("❌ Login first.");
-      const blob = new Blob([JSON.stringify(currentPlayer)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `save_${currentPlayer.tag}.json`;
-      a.click();
-    };
-
-    const loadFile = () => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "application/json";
-      input.onchange = async (e) => {
-        const file = e.target.files[0];
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          const data = JSON.parse(event.target.result);
-          await db.players.put(data);
-          currentPlayer = data;
-          localStorage.setItem("currentTag", data.tag);
-          updateSticky();
-          print(`✅ Game loaded for tag ${data.tag}`);
-        };
-        reader.readAsText(file);
-      };
-      input.click();
-    };
-
-    const reset = async () => {
-      if (!currentPlayer) return print("❌ Login first.");
-      if (!confirm("⚠️ This will DELETE your save. Proceed?")) return print("❌ Cancelled.");
-      await db.players.delete(currentPlayer.tag);
-      localStorage.removeItem("currentTag");
-      currentPlayer = null;
-      updateSticky();
-      print("🗑️ Account deleted.");
-    };
-
-    const parse = async (text) => {
-      const [cmd, ...args] = text.trim().split(" ");
-      switch (cmd) {
-        case 'signup': return signup(args[0]);
-        case 'login': return login(args[0], args[1]);
-        case 'joblist': return joblist();
-        case 'apply': return apply(args[0]);
-        case 'resign': return resign();
-        case 'itemlist': return itemlist();
-        case 'buy': return buy(args[0], args[1]);
-        case 'sell': return sell(args[0], args[1]);
-        case 'inv': return inv();
-        case 'dice': return dice(args[0]);
-        case 'slots': return slots(args[0]);
-        case 'crime': return crimeCommand(args[0]);
-        case 'savefile': return saveFile();
-        case 'loadfile': return loadFile();
-        case 'reset': return reset();
-        case 'help': return help();
-        default: print("❓ Unknown command. Type 'help'");
       }
     };
 
-    input.addEventListener("keydown", (e) => {
+    $("input").addEventListener("keydown", async (e) => {
       if (e.key === "Enter") {
-        print("> " + input.value);
-        parse(input.value);
-        input.value = "";
+        const [cmd, ...args] = e.target.value.trim().split(" ");
+        e.target.value = "";
+        print("> " + cmd + " " + args.join(" "));
+        if (commands[cmd]) {
+          await commands[cmd](args);
+        } else {
+          print("Arahan tidak sah. Taip 'help'");
+        }
       }
     });
 
-    (async () => {
-      const tag = localStorage.getItem("currentTag");
-      if (tag) {
-        const p = await db.players.get(tag);
-        if (p) {
-          currentPlayer = p;
-          updateSticky();
-          print(`✅ Auto-login as ${tag}`);
-        }
-      }
-      autoSalary();
-    })();
+    loadFromStorage();
+    autoPay();
   </script>
 </body>
 </html>
